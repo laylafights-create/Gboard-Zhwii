@@ -1,0 +1,118 @@
+name: Release from tag
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle
+        uses: burrunan/gradle-cache-action@v3
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Check Morphe registry credentials
+        env:
+          MORPHE_TOKEN: ${{ secrets.MORPHE_PACKAGES_TOKEN || github.token }}
+        run: |
+          if [ -z "$MORPHE_TOKEN" ]; then
+            echo "::error::No token for https://maven.pkg.github.com/MorpheApp/registry. Add a repo secret MORPHE_PACKAGES_TOKEN (classic PAT with read:packages)."
+            exit 1
+          fi
+
+      - name: Validate synced release metadata
+        id: metadata
+        shell: pwsh
+        env:
+          REPO_SLUG: ${{ github.repository }}
+        run: |
+          $gradleText = Get-Content -LiteralPath "gradle.properties" -Raw
+          $match = [regex]::Match($gradleText, '(?m)^\s*version\s*=\s*([^\r\n#]+?)\s*$')
+          if (-not $match.Success) {
+              throw "Unable to resolve version from gradle.properties."
+          }
+
+          $actualVersion = $match.Groups[1].Value.Trim()
+
+          # Tag pushes use the pushed tag. Manual (workflow_dispatch) runs happen on a
+          # branch, so derive the tag from gradle.properties instead.
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+              $tag = $env:GITHUB_REF_NAME
+              if (-not $tag.StartsWith("v")) {
+                  throw "Release tag must start with 'v'."
+              }
+              $expectedVersion = $tag.Substring(1)
+              if ($actualVersion -ne $expectedVersion) {
+                  throw "Tag version '$expectedVersion' does not match gradle.properties version '$actualVersion'."
+              }
+          } else {
+              $tag = "v$actualVersion"
+              Write-Host "Not a tag run (ref type '$($env:GITHUB_REF_TYPE)', ref '$($env:GITHUB_REF_NAME)'); releasing as $tag."
+          }
+
+          $bundle = Get-Content -LiteralPath "patches-bundle.json" -Raw | ConvertFrom-Json
+          if ([string]$bundle.version -ne $actualVersion) {
+              throw "patches-bundle.json version '$($bundle.version)' does not match '$actualVersion'."
+          }
+
+          $expectedDownloadUrl = "https://github.com/$($env:REPO_SLUG)/releases/download/$tag/patches-$actualVersion.mpp"
+
+          if ([string]$bundle.download_url -ne $expectedDownloadUrl) {
+              throw "patches-bundle.json download_url does not match expected public release URL."
+          }
+          if (-not [string]::IsNullOrEmpty([string]$bundle.signature_download_url)) {
+              throw "patches-bundle.json signature_download_url must be empty for the public repo."
+          }
+
+          "version=$actualVersion" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        env:
+          GITHUB_ACTOR: ${{ github.repository_owner }}
+          # Fall back to the workflow token when the optional PAT secret is not configured.
+          GITHUB_TOKEN: ${{ secrets.MORPHE_PACKAGES_TOKEN || github.token }}
+        run: ./gradlew :patches:buildAndroid generatePatchesList --no-daemon --console=plain
+
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $bundle = Get-Content -LiteralPath "patches-bundle.json" -Raw | ConvertFrom-Json
+          $notes = [string]$bundle.description
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+              $notes = "Public mirror release for ${{ steps.metadata.outputs.tag }}."
+          }
+          Set-Content -LiteralPath "release-notes.md" -Value $notes -Encoding utf8
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          body_path: release-notes.md
+          prerelease: ${{ contains(steps.metadata.outputs.tag, '-dev.') }}
+          files: |
+            patches/build/libs/patches-${{ steps.metadata.outputs.version }}.mpp
