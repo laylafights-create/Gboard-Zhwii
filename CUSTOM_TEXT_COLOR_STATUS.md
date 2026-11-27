@@ -91,3 +91,10 @@ smali / view-tree assumptions below have been checked against the real app.
 - Icons are rechecked before every frame, so switching to ?123 does not leave the toolbar untinted.
 - Keyboard bounce animation (scale from bottom, 600 ms) hooked at Lphr;->onWindowShown; Kotlin not compiled, not tried on a device.
 - On/Off button "Hiệu ứng mở bàn phím" (default on). Settings page change not compiled.
+
+## Suggestion strip animation (added)
+- Section "Hiệu ứng thanh gợi ý" on the Custom Text Color page: on/off (default on), 6 presets, 12 styles + random,
+  5 easings, 3 stagger orders, timing/distance/scale/angle/strength/fade sliders, fast-typing skip, preview.
+- Reuses the existing AutoCenterScaleTextView draw hook (SUGGESTION target); no new smali hook. Only the text view moves.
+- New animation classes compiled and simulated against minimal Android stubs. GboardTextColorRuntime edit not compiled.
+  No Gradle build, no device run.

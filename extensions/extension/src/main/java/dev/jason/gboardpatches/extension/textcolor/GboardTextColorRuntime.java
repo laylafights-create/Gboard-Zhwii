@@ -51,21 +51,29 @@ public final class GboardTextColorRuntime {
                 GboardSuggestionChipTweaks.onTextView((TextView) view);
             }
             if (view instanceof TextView) GboardCustomFont.apply((TextView) view);
+            boolean hideFrame = view instanceof TextView && target == Target.SUGGESTION
+                    && GboardSuggestionAnimator.onTextView((TextView) view);
             boolean rainbow = rainbowEnabled();
             GboardTextColorIconTinter.sync(view, rainbow);
-            if (rainbow && view instanceof TextView) {
-                if (target == Target.KEY) {
-                    return randomKeyColor((TextView) view, stockColor);
-                }
-                if (target == Target.SUGGESTION) {
-                    return GboardTextColorRainbow.colorForSuggestion(
-                            ((TextView) view).getText(), stockColor);
-                }
-            }
-            return resolve(target, stockColor);
+            int color = colorFor(view, target, rainbow, stockColor);
+            // One transparent frame, so the new text does not flash before its entrance starts.
+            return hideFrame ? color & 0x00FFFFFF : color;
         } catch (Throwable ignored) {
             return stockColor;
         }
+    }
+
+    private static int colorFor(View view, Target target, boolean rainbow, int stockColor) {
+        if (rainbow && view instanceof TextView) {
+            if (target == Target.KEY) {
+                return randomKeyColor((TextView) view, stockColor);
+            }
+            if (target == Target.SUGGESTION) {
+                return GboardTextColorRainbow.colorForSuggestion(
+                        ((TextView) view).getText(), stockColor);
+            }
+        }
+        return resolve(target, stockColor);
     }
 
     /** Rainbow flag rides in the cache snapshot as the slot after the targets (1 = on). */

@@ -88,6 +88,7 @@ public final class GboardTextColorSettingsFeature implements GboardPatchesSettin
         addAnimationRow(context, root, prefs);
         addEnterAnimationSection(context, root, prefs);
         addChipRows(context, root, host, prefs);
+        GboardSuggestionAnimationSection.add(context, root, prefs);
 
         Button reset = new Button(context);
         reset.setText("Đặt lại tất cả màu");
