@@ -910,7 +910,8 @@ public final class GboardFrostedGlassRuntime {
             int edgeGapLeft = 0;
             int edgeGapRight = 0;
             if (GboardFrostedGlassSettingsRuntime.isLandscapeFullWidthEnabled()
-                    && keyboardRoot.getWidth() > keyboardRoot.getHeight()
+                    && keyboardRoot.getResources().getConfiguration().orientation
+                            == android.content.res.Configuration.ORIENTATION_LANDSCAPE
                     && keyboardRoot.getWidth() >= keyboardRoot.getRootView().getWidth() * 9 / 10) {
                 themeInsetLeft = Math.max(0, shape.bounds.left);
                 themeInsetRight = Math.max(0, keyboardRoot.getWidth() - shape.bounds.right);
